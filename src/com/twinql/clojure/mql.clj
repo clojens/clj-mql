@@ -1,58 +1,58 @@
 (ns com.twinql.clojure.mql
   (:refer-clojure)
-  (:import 
+  (:import
      (java.lang Exception)
      (java.net URI)
      (org.apache.http Header)
      (org.apache.http.client CookieStore)
      (org.apache.http.impl.client AbstractHttpClient))
-  (:require 
-     [clojure.contrib.json :as json]
-     [com.twinql.clojure.http :as http]))
+   (:require [clojure.data.json :as json]
+             [clj-http.client :as http]))
+     ;[com.twinql.clojure.http :as http]))
 
 ;;;
 ;;; API URIs.
 ;;; If you need to, you can rebind these around your calls to use different locations.
 ;;; By default, SSL is only used for authenticated operations.
-;;; 
+;;;
 
-(def *mql-login*     (new URI "https://api.freebase.com/api/account/login"))
-(def *mql-logged-in* (new URI "https://api.freebase.com/api/account/loggedin"))
-(def *mql-write*     (new URI "https://api.freebase.com/api/service/mqlwrite"))
-(def *mql-version*   (new URI "http://api.freebase.com/api/version"))
-(def *mql-status*    (new URI "http://api.freebase.com/api/status"))
-(def *mql-read*      (new URI "http://api.freebase.com/api/service/mqlread"))
-(def *mql-search*    (new URI "http://api.freebase.com/api/service/search"))
-(def *mql-reconcile* (new URI "http://data.labs.freebase.com/recon/query"))
+(def ^:dynamic *mql-login*     (new URI "https://api.freebase.com/api/account/login"))
+(def ^:dynamic *mql-logged-in* (new URI "https://api.freebase.com/api/account/loggedin"))
+(def ^:dynamic *mql-write*     (new URI "https://api.freebase.com/api/service/mqlwrite"))
+(def ^:dynamic *mql-version*   (new URI "http://api.freebase.com/api/version"))
+(def ^:dynamic *mql-status*    (new URI "http://api.freebase.com/api/status"))
+(def ^:dynamic *mql-read*      (new URI "http://api.freebase.com/api/service/mqlread"))
+(def ^:dynamic *mql-search*    (new URI "http://api.freebase.com/api/service/search"))
+(def ^:dynamic *mql-reconcile* (new URI "http://data.labs.freebase.com/recon/query"))
 
-(def *s-mql-login*     (new URI "https://www.sandbox-freebase.com/api/account/login"))
-(def *s-mql-logged-in* (new URI "https://www.sandbox-freebase.com/api/account/loggedin"))
-(def *s-mql-write*     (new URI "https://www.sandbox-freebase.com/api/service/mqlwrite"))
-(def *s-mql-version*   (new URI "http://www.sandbox-freebase.com/api/version"))
-(def *s-mql-status*    (new URI "http://www.sandbox-freebase.com/api/status"))
-(def *s-mql-read*      (new URI "http://www.sandbox-freebase.com/api/service/mqlread"))
-(def *s-mql-search*    (new URI "http://www.sandbox-freebase.com/api/service/search"))
-(def *s-mql-reconcile* (new URI "http://data.labs.freebase.com/recon/query"))
+(def ^:dynamic *s-mql-login*     (new URI "https://www.sandbox-freebase.com/api/account/login"))
+(def ^:dynamic *s-mql-logged-in* (new URI "https://www.sandbox-freebase.com/api/account/loggedin"))
+(def ^:dynamic *s-mql-write*     (new URI "https://www.sandbox-freebase.com/api/service/mqlwrite"))
+(def ^:dynamic *s-mql-version*   (new URI "http://www.sandbox-freebase.com/api/version"))
+(def ^:dynamic *s-mql-status*    (new URI "http://www.sandbox-freebase.com/api/status"))
+(def ^:dynamic *s-mql-read*      (new URI "http://www.sandbox-freebase.com/api/service/mqlread"))
+(def ^:dynamic *s-mql-search*    (new URI "http://www.sandbox-freebase.com/api/service/search"))
+(def ^:dynamic *s-mql-reconcile* (new URI "http://data.labs.freebase.com/recon/query"))
 
 (defmacro with-sandbox
   "Rebinds the API locations to point to the Sandbox."
   [& body]
   `(binding [*mql-version*   *s-mql-version*
-             *mql-login*     *s-mql-login*  
+             *mql-login*     *s-mql-login*
              *mql-logged-in* *s-mql-logged-in*
-             *mql-status*    *s-mql-status* 
-             *mql-read*      *s-mql-read*   
-             *mql-write*     *s-mql-write*  
-             *mql-search*    *s-mql-search* 
+             *mql-status*    *s-mql-status*
+             *mql-read*      *s-mql-read*
+             *mql-write*     *s-mql-write*
+             *mql-search*    *s-mql-search*
              *mql-reconcile* *s-mql-reconcile*]
      ~@body))
 
 ;;; This is bound by with-login.
-(def *cookie-store* nil)
+(def ^:dynamic *cookie-store* nil)
 
 ;;;
 ;;; Generic utilities.
-;;; 
+;;;
 
 (defn- non-nil-values
   "Return the map with only those keys that map to non-nil values."
@@ -67,14 +67,14 @@
            k (first ks)
            ks (rest ks)]
       (if-not k
-        (persistent! o)        
+        (persistent! o)
         (recur (assoc! o k (f (get o k)))
                (first ks)
                (rest ks))))))
 
 ;;;
 ;;; Utility functions for request and response manipulation.
-;;; 
+;;;
 
 (defn- envelope
   ([p q]
@@ -102,7 +102,7 @@
                (str "Non-OK status from MQL query: code ["
                     (:code res)
                     "] -- response [" (prn-str res)
-                    
+
                     ;(seq (map :message (:messages res)))
                     "]"
                     (if q
@@ -148,7 +148,7 @@
 
 ;;;
 ;;; Query manipulation.
-;;; 
+;;;
 
 ;; An infinite sequence of query names.
 (def query-names
@@ -201,9 +201,9 @@
   ([mql]
      (mql->query mql nil)))
 
-;;; 
+;;;
 ;;; HTTP.
-;;; 
+;;;
 
 (defmacro with-http-bindings
   "Binds the keys from the result of the HTTP request, executing forms."
@@ -224,7 +224,7 @@
 
 ;;;
 ;;; MQL operations.
-;;; 
+;;;
 
 (defn mql-login
   "Returns the login response and on success, false on failure.
@@ -239,7 +239,7 @@
     (if (check? code content)
       [content (.getCookieStore client)]
       [false nil])))
-  
+
 (defn mql-logged-in?
   "Return whether the user (identified by the current cookie store)
   is logged in."
@@ -277,9 +277,9 @@
       (process-multiple-query-results content names)
       (process-query-result content q
                             [many? names headers parameters cookie-store]))))
-  
-(defn mql-read 
-  "Send a MQL query to Freebase. Optionally provide a dictionary of 
+
+(defn mql-read
+  "Send a MQL query to Freebase. Optionally provide a dictionary of
   arguments suitable to http/get, and a boolean for debug output.
   If a sequence of queries is provided, they are batched and run together;
   the output is as if this function had been mapped over the sequence of
@@ -296,11 +296,11 @@
                   (:headers http-options)
                   (:parameters http-options)
                   *cookie-store*)))
-    
+
   ([mql]
    (mql-read mql {})))
 
-(defn mql-write 
+(defn mql-write
   "Send a MQL write request to Freebase. Requires authentication."
   ([mql http-options]
    (let [[q many? names] (mql->query mql)]
@@ -312,17 +312,17 @@
        (http/post *mql-write*
                   :headers (assoc (:headers http-options) "X-Metaweb-Request" "x")
                   :parameters (:parameters http-options)
-                  :query q 
+                  :query q
                   :as :json
                   :cookie-store *cookie-store*)
 
        (if many?
          (process-multiple-query-results content names)
          (process-query-result content)))))
-  
+
   ([mql]
    (mql-write mql {})))
-  
+
 (defn mql-version
   "Returns a map. Useful keys are :graph (graphd version), :me, :cdb, :relevance."
   []
@@ -336,7 +336,7 @@
   "Filter MQL reconciliation API results to only include matching results."
   [results]
   (filter :match results))
-  
+
 (defn mql-reconcile
   [query & args]
   (let [{:keys [limit
@@ -386,7 +386,7 @@
                 escape      ; 'html'
 
                 http-options]} (apply hash-map args)
-        
+
         query (non-nil-values
                 {"query" query
                  "format" (or format "json")
@@ -398,7 +398,7 @@
                  "domain" domain
                  "domain_strict" domain-strict
                  "escape" escape})]
-    
+
     (with-http-bindings-exception
       [code content]
       (http/get *mql-search*
@@ -421,39 +421,39 @@
                   (filter
                      #(not (= "Topic" %))
                      (map :name (:type m))))]
-      (println 
+      (println
         (str (:id m) (if topic (str ": a " topic) "")
              " named “" (or (:name m)
                             (:alias m)) "”"))))
-  
+
   (doseq [m (mql/mql-search "Los Gatos" :type "/location/citytown")]
     ;; Everything is a topic.. filter them out..
     (let [topic (first
                   (filter
                      #(not (= "Topic" %))
                      (map :name (:type m))))]
-      (println 
+      (println
         (str (:id m) (if topic (str ": a " topic) "")
              " named “" (or (:name m)
                             (:alias m)) "”"))))
-  
- 
+
+
   (first
     (mql/only-matching
-      (mql/mql-reconcile 
+      (mql/mql-reconcile
        {
             "/type/object/name" "Blade Runner",
             "/type/object/type" "/film/film",
             "/film/film/starring/actor" ["Harrison Ford", "Rutger Hauer"],
             "/film/film/starring/character" ["Rick Deckard", "Roy Batty"],
-            "/film/film/director" 
+            "/film/film/director"
             {
                 "name" "Ridley Scott",
                 "id" "/guid/9202a8c04000641f8000000000032ded"
             },
             "/film/film/release_date_s" "1981"
         })))
-  
+
 (with-sandbox
   (with-login ["user" "pass"]
     (mql-write {"create" "unless_exists"
